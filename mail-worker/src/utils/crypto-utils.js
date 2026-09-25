@@ -2,14 +2,15 @@ const encoder = new TextEncoder();
 
 // PBKDF2-HMAC-SHA-256 cost factor for new password hashes.
 //
-// Why not the OWASP 600k default: Workers bill/limit CPU time, and WebCrypto
-// PBKDF2 runs on that budget. 210k is the OWASP floor for PBKDF2-HMAC-SHA-512
-// and a sane default here; raise it via the `pbkdf2_iterations` env var on
-// paid plans. Stored hashes embed their own iteration count, so changing this
+// The Workers WebCrypto runtime rejects iteration counts above 100000, so the
+// default and the cap sit at that ceiling. 100k is below OWASP's 210k/600k
+// guidance, but it is the most the platform allows; raise it via the
+// `pbkdf2_iterations` env var only if the runtime ever lifts the cap (it will
+// be clamped). Stored hashes embed their own iteration count, so changing this
 // later is safe: existing hashes keep verifying, new hashes use the new cost.
-export const PBKDF2_DEFAULT_ITERATIONS = 210000;
+export const PBKDF2_DEFAULT_ITERATIONS = 100000;
 const PBKDF2_MIN_ITERATIONS = 10000;
-const PBKDF2_MAX_ITERATIONS = 2000000;
+const PBKDF2_MAX_ITERATIONS = 100000;
 const PBKDF2_KEY_LEN_BYTES = 32;
 const PBKDF2_HASH_PREFIX = 'pbkdf2';
 

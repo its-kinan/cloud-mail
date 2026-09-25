@@ -70,10 +70,10 @@ test('new hashes are not flagged as legacy', async () => {
 test('resolveIterations defaults, parses env, and clamps', () => {
 	assert.equal(cryptoUtils.resolveIterations(undefined), PBKDF2_DEFAULT_ITERATIONS);
 	assert.equal(cryptoUtils.resolveIterations({}), PBKDF2_DEFAULT_ITERATIONS);
-	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: '600000' }), 600000);
+	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: '600000' }), 100000); // clamped to the Workers runtime ceiling
 	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: 'garbage' }), PBKDF2_DEFAULT_ITERATIONS);
 	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: '100' }), 10000); // clamped up
-	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: '99999999' }), 2000000); // clamped down
+	assert.equal(cryptoUtils.resolveIterations({ pbkdf2_iterations: '99999999' }), 100000); // clamped down to the Workers runtime ceiling
 });
 
 // --- timingSafeEqual ----------------------------------------------------------
