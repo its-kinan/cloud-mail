@@ -6,6 +6,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
+import DOMPurify from 'dompurify'
 
 const props = defineProps({
   html: {
@@ -18,18 +19,51 @@ const container = ref(null)
 const contentBox = ref(null)
 let shadowRoot = null
 
+// Sanitize untrusted email HTML before it touches the DOM.
+//
+// A shadow root is NOT a security boundary: <script> tags inserted via
+// innerHTML don't run, but event-handler attributes (<img onerror=...>,
+// <svg onload=...>, ...) and javascript: URLs execute normally inside it.
+// Without sanitization, one malicious email could run JS in the app's
+// origin and steal the auth token from localStorage.
+function sanitizeEmailHtml(dirty) {
+  return DOMPurify.sanitize(dirty || '', {
+    WHOLE_DOCUMENT: true,
+    // Email essentials: keep formatting, allow inline data: images.
+    ADD_DATA_URI_TAGS: ['img'],
+    // Mail content must never submit forms or embed browsing contexts.
+    FORBID_TAGS: ['form', 'input', 'button', 'select', 'textarea', 'iframe', 'frame', 'object', 'embed', 'base', 'meta', 'link', 'script', 'noscript'],
+    FORBID_ATTR: ['formaction'],
+  })
+}
+
 function updateContent() {
   if (!shadowRoot) return;
 
-  // 1. 提取 <body> 的 style 属性（如果存在）
-  const bodyStyleRegex = /<body[^>]*style="([^"]*)"[^>]*>/i;
-  const bodyStyleMatch = props.html.match(bodyStyleRegex);
-  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
+  // DOMPurify parses with the real HTML parser, so the serialized output
+  // below cannot contain a literal "</style>" breakout sequence.
+  const clean = sanitizeEmailHtml(props.html)
 
-  // 2. 移除 <body> 标签（保留内容）
-  const cleanedHtml = props.html.replace(/<\/?body[^>]*>/gi, '');
+  // 1. Extract <body style="..."> (common in marketing mail). Applied via
+  // the DOM API below — the old code interpolated the raw style string
+  // into the <style> block, where a crafted value like
+  // `x</style><img src=x onerror=...>` broke out into arbitrary markup.
+  let bodyStyle = ''
+  const bodyOpen = clean.match(/<body[^>]*>/i)
+  const styleMatch = bodyOpen && bodyOpen[0].match(/\sstyle=(["'])([\s\S]*?)\1/i)
+  if (styleMatch) bodyStyle = styleMatch[2]
 
-  // 3. 将 body 的 style 应用到 .shadow-content
+  // 2. Keep the mail's own <style> blocks for rendering fidelity
+  // (already sanitized above).
+  const emailStyles = [...clean.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map(m => m[1]).join('\n')
+
+  // 3. Drop document wrappers, keep the content.
+  const content = clean
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<title>[\s\S]*?<\/title>/gi, '')
+    .replace(/<\/?(?:html|head|body)[^>]*>/gi, '')
+
   shadowRoot.innerHTML = `
     <style>
       :host {
@@ -63,7 +97,6 @@ function updateContent() {
         width: fit-content;
         height: fit-content;
         min-width: 100%;
-        ${bodyStyle ? bodyStyle : ''} /* 注入 body 的 style */
       }
 
       img:not(table img) {
@@ -71,11 +104,16 @@ function updateContent() {
         height: auto !important;
       }
 
+      ${emailStyles}
     </style>
-    <div class="shadow-content">
-      ${cleanedHtml}
-    </div>
+    <div class="shadow-content"></div>
   `;
+
+  // setAttribute() never parses HTML, so a hostile style value can't
+  // escape into markup here.
+  const contentDiv = shadowRoot.querySelector('.shadow-content')
+  if (bodyStyle) contentDiv.setAttribute('style', bodyStyle)
+  contentDiv.innerHTML = content
 }
 
 function autoScale() {
