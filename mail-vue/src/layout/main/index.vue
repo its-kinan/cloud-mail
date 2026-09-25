@@ -16,6 +16,7 @@ import {useSettingStore} from "@/store/setting.js";
 import {computed, onBeforeUnmount, onMounted, watch} from "vue";
 import { useRoute } from 'vue-router'
 import { hasPerm } from "@/perm/perm.js"
+import DOMPurify from 'dompurify'
 
 const settingStore = useSettingStore()
 const uiStore = useUiStore();
@@ -61,17 +62,25 @@ function showNotice(data) {
   }
 
   const style = document.createElement('style');
+  // noticeWidth comes from stored system settings; coerce to a number so a
+  // hostile value can't break out of the CSS context.
+  const noticeWidth = Number(data.noticeWidth) || 380;
   style.innerHTML = `
   .custom-notice.el-notification {
-    --el-notification-width: min(${data.noticeWidth}px,calc(100% - 30px)) !important;
+    --el-notification-width: min(${noticeWidth}px,calc(100% - 30px)) !important;
   }
   `;
 
   document.head.appendChild(style);
 
+  // noticeContent is admin-authored but stored server-side and rendered to
+  // every user, so sanitize it: a compromised admin session must not become
+  // persistent XSS for the whole deployment.
+  const safeContent = DOMPurify.sanitize(data.noticeContent || '');
+
   elNotification = ElNotification({
-    title: data.noticeTitle,
-    message: `<div style="width: 100%;height: 100%;">${data.noticeContent}</div>`,
+    title: DOMPurify.sanitize(data.noticeTitle || ''),
+    message: `<div style="width: 100%;height: 100%;">${safeContent}</div>`,
     type: data.noticeType === 'none' ? '' : data.noticeType,
     duration: data.noticeDuration,
     position: data.noticePosition,
