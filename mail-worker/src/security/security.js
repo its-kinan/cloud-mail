@@ -7,19 +7,7 @@ import userService from '../service/user-service';
 import permService from '../service/perm-service';
 import { t } from '../i18n/i18n'
 import app from '../hono/hono';
-
-const exclude = [
-	'/login',
-	'/register',
-	'/oss',
-	'/setting/websiteConfig',
-	'/webhooks',
-	'/init',
-	'/public/genToken',
-	'/telegram',
-	'/test',
-	'/oauth'
-];
+import { isExemptPath } from '../utils/exempt-path.js';
 
 const requirePerms = [
 	'/email/send',
@@ -93,11 +81,7 @@ app.use('*', async (c, next) => {
 
 	const path = c.req.path;
 
-	const index = exclude.findIndex(item => {
-		return path.startsWith(item);
-	});
-
-	if (index > -1) {
+	if (isExemptPath(path)) {
 		return await next();
 	}
 

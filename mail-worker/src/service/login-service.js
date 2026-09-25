@@ -126,7 +126,7 @@ const loginService = {
 			}
 		}
 
-		const { salt, hash } = await saltHashUtils.hashPassword(password);
+		const { salt, hash } = await saltHashUtils.hashPassword(password, saltHashUtils.resolveIterations(c.env));
 
 		const userId = await userService.insert(c, { email, regKeyId,password: hash, salt, type: type || defType });
 
@@ -167,8 +167,8 @@ const loginService = {
 			throw new BizError(t('noRegKeyCount'));
 		}
 
-		const today = toUtc().tz('Asia/Shanghai').startOf('day')
-		const expireTime = toUtc(regKeyRow.expireTime).tz('Asia/Shanghai').startOf('day');
+		const today = toUtc().startOf('day')
+		const expireTime = toUtc(regKeyRow.expireTime).startOf('day');
 
 		if (expireTime.isBefore(today)) {
 			throw new BizError(t('regKeyExpire'));
@@ -189,8 +189,8 @@ const loginService = {
 			return null
 		}
 
-		const today = toUtc().tz('Asia/Shanghai').startOf('day')
-		const expireTime = toUtc(regKeyRow.expireTime).tz('Asia/Shanghai').startOf('day');
+		const today = toUtc().startOf('day')
+		const expireTime = toUtc(regKeyRow.expireTime).startOf('day');
 
 		if (regKeyRow.count <= 0 || expireTime.isBefore(today)) {
 			return null
@@ -223,6 +223,14 @@ const loginService = {
 
 		if (!await cryptoUtils.verifyPassword(password, userRow.salt, userRow.password) && !noVerifyPwd) {
 			throw new BizError(t('IncorrectPwd'));
+		}
+
+		// Transparent upgrade: single-round SHA-256 hashes are re-hashed with
+		// PBKDF2 on the next successful login. noVerifyPwd (OAuth) logins skip
+		// this because the plaintext password is not available.
+		if (!noVerifyPwd && cryptoUtils.isLegacyHash(userRow.password)) {
+			const { salt, hash } = await cryptoUtils.hashPassword(password, cryptoUtils.resolveIterations(c.env));
+			await userService.updatePasswordHash(c, userRow.userId, hash, salt);
 		}
 
 		const uuid = uuidv4();

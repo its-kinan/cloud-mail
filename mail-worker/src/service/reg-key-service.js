@@ -48,8 +48,8 @@ const regKeyService = {
 	},
 
 	async clearNotUse(c) {
-		let now = formatDetailDate(toUtc().tz('Asia/Shanghai').startOf('day'))
-		await orm(c).delete(regKey).where(or(eq(regKey.count, 0),sql`datetime(${regKey.expireTime}, '+8 hours') < datetime(${now})`)).run();
+		let now = formatDetailDate(toUtc().startOf('day'))
+		await orm(c).delete(regKey).where(or(eq(regKey.count, 0),sql`datetime(${regKey.expireTime}) < datetime(${now})`)).run();
 	},
 
 	selectByCode(c, code) {
@@ -68,14 +68,14 @@ const regKeyService = {
 		const regKeyList = await query.orderBy(desc(regKey.regKeyId)).all();
 		const roleList = await roleService.roleSelectUse(c);
 
-		const today = toUtc().tz('Asia/Shanghai').startOf('day')
+		const today = toUtc().startOf('day')
 
 		regKeyList.forEach(regKeyRow => {
 
 			const index = roleList.findIndex(roleRow => roleRow.roleId === regKeyRow.roleId)
 			regKeyRow.roleName = index > -1 ? roleList[index].name : ''
 
-			const expireTime = toUtc(regKeyRow.expireTime).tz('Asia/Shanghai').startOf('day');
+			const expireTime = toUtc(regKeyRow.expireTime).startOf('day');
 
 			if (expireTime.isBefore(today)) {
 				regKeyRow.expireTime = null

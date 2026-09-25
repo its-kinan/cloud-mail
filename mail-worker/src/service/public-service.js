@@ -109,7 +109,8 @@ const publicService = {
 			}
 
 			const { salt, hash } = await saltHashUtils.hashPassword(
-				emailRow.password || cryptoUtils.genRandomPwd()
+				emailRow.password || cryptoUtils.genRandomPwd(),
+				saltHashUtils.resolveIterations(c.env)
 			);
 
 			emailRow.salt = salt;
@@ -135,14 +136,13 @@ const publicService = {
 				type = roleRow ? roleRow.roleId : type;
 			}
 
-			const userSql = `INSERT INTO user (email, password, salt, type, os, browser, active_ip, create_ip, device, active_time, create_time)
-			VALUES ('${email}', '${hash}', '${salt}', '${type}', '${os}', '${browser}', '${activeIp}', '${activeIp}', '${device}', '${activeTime}', '${activeTime}')`
-
-			const accountSql = `INSERT INTO account (email, name, user_id)
-			VALUES ('${email}', '${emailUtils.getName(email)}', 0);`;
-
-			userList.push(c.env.db.prepare(userSql));
-			userList.push(c.env.db.prepare(accountSql));
+			userList.push(c.env.db.prepare(
+				`INSERT INTO user (email, password, salt, type, os, browser, active_ip, create_ip, device, active_time, create_time)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			).bind(email, hash, salt, type, os, browser, activeIp, activeIp, device, activeTime, activeTime));
+			userList.push(c.env.db.prepare(
+				`INSERT INTO account (email, name, user_id) VALUES (?, ?, 0)`
+			).bind(email, emailUtils.getName(email)));
 
 		}
 
@@ -187,6 +187,11 @@ const publicService = {
 
 		if (!await cryptoUtils.verifyPassword(password, userRow.salt, userRow.password)) {
 			throw new BizError(t('IncorrectPwd'));
+		}
+
+		if (cryptoUtils.isLegacyHash(userRow.password)) {
+			const { salt, hash } = await cryptoUtils.hashPassword(password, cryptoUtils.resolveIterations(c.env));
+			await userService.updatePasswordHash(c, userRow.userId, hash, salt);
 		}
 	}
 

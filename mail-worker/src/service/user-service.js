@@ -56,6 +56,11 @@ const userService = {
 	},
 
 
+	// Used by the transparent rehash-on-login upgrade (see login-service).
+	async updatePasswordHash(c, userId, hash, salt) {
+		await orm(c).update(user).set({ password: hash, salt: salt }).where(eq(user.userId, userId)).run();
+	},
+
 	async resetPassword(c, params, userId) {
 
 		const { password } = params;
@@ -63,7 +68,7 @@ const userService = {
 		if (password.length < 6) {
 			throw new BizError(t('pwdMinLength'));
 		}
-		const { salt, hash } = await cryptoUtils.hashPassword(password);
+		const { salt, hash } = await cryptoUtils.hashPassword(password, cryptoUtils.resolveIterations(c.env));
 		await orm(c).update(user).set({ password: hash, salt: salt }).where(eq(user.userId, userId)).run();
 	},
 
@@ -355,7 +360,7 @@ const userService = {
 			throw new BizError(t('roleNotExist'));
 		}
 
-		const { salt, hash } = await saltHashUtils.hashPassword(password);
+		const { salt, hash } = await saltHashUtils.hashPassword(password, saltHashUtils.resolveIterations(c.env));
 
 		const userId = await userService.insert(c, { email, password: hash, salt, type });
 
